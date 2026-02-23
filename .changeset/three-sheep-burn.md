@@ -1,5 +1,5 @@
 ---
-'@astrojs/vercel': patch
+'@astrojs/vercel': minor
 ---
 
 Adds new `middlewareMode` adapter feature and deprecates `edgeMiddleware` option

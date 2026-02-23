@@ -1,5 +1,5 @@
 ---
-'@astrojs/netlify': patch
+'@astrojs/netlify': minor
 ---
 
 Adds new `middlewareMode` adapter feature and deprecates `edgeMiddleware` option
