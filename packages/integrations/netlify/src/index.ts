@@ -655,6 +655,9 @@ export default function netlifyIntegration(
 								packageVersion,
 							}),
 						],
+						ssr: {
+							noExternal: ['@astrojs/netlify'],
+						},
 						server: {
 							watch: {
 								ignored: [fileURLToPath(new URL('./.netlify/**', rootDir))],

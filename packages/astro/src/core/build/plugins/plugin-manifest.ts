@@ -325,6 +325,11 @@ async function buildManifest(
 		trailingSlash: settings.config.trailingSlash,
 		compressHTML: settings.config.compressHTML,
 		assetsPrefix: settings.config.build.assetsPrefix,
+		experimentalQueuedRendering: {
+			enabled: settings.config.experimental.queuedRendering?.enabled ?? false,
+			poolSize: 0,
+			contentCache: false,
+		},
 		componentMetadata: Array.from(internals.componentMetadata),
 		renderers: [],
 		clientDirectives: Array.from(settings.clientDirectives),
@@ -335,6 +340,10 @@ async function buildManifest(
 		buildFormat: settings.config.build.format,
 		checkOrigin:
 			(settings.config.security?.checkOrigin && settings.buildOutput === 'server') ?? false,
+		actionBodySizeLimit:
+			settings.config.security?.actionBodySizeLimit && settings.buildOutput === 'server'
+				? settings.config.security.actionBodySizeLimit
+				: 1024 * 1024,
 		allowedDomains: settings.config.security?.allowedDomains,
 		key: encodedKey,
 		sessionConfig: sessionConfigToManifest(settings.config.session),

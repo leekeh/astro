@@ -8,9 +8,9 @@ import { nodeLogDestination } from '../core/logger/node.js';
 import { NOOP_MIDDLEWARE_FN } from '../core/middleware/noop-middleware.js';
 import { removeLeadingForwardSlash } from '../core/path.js';
 import { RenderContext } from '../core/render-context.js';
-import { getParts } from '../core/routing/manifest/parts.js';
-import { getPattern } from '../core/routing/manifest/pattern.js';
-import { validateSegment } from '../core/routing/manifest/segment.js';
+import { getParts } from '../core/routing/parts.js';
+import { getPattern } from '../core/routing/pattern.js';
+import { validateSegment } from '../core/routing/segment.js';
 import type { AstroComponentFactory } from '../runtime/server/index.js';
 import { SlotString } from '../runtime/server/render/slot.js';
 import type { ComponentInstance } from '../types/astro.js';
@@ -165,6 +165,7 @@ function createManifest(
 		i18n: manifest?.i18n,
 		checkOrigin: false,
 		allowedDomains: manifest?.allowedDomains ?? [],
+		actionBodySizeLimit: 1024 * 1024,
 		middleware: manifest?.middleware ?? middlewareInstance,
 		key: createKey(),
 		csp: manifest?.csp,
@@ -177,6 +178,9 @@ function createManifest(
 			placement: undefined,
 		},
 		logLevel: 'silent',
+		experimentalQueuedRendering: manifest?.experimentalQueuedRendering ?? {
+			enabled: false,
+		},
 	};
 }
 
@@ -268,6 +272,7 @@ type AstroContainerManifest = Pick<
 	| 'middlewareMode'
 	| 'assetsDir'
 	| 'image'
+	| 'experimentalQueuedRendering'
 >;
 
 type AstroContainerConstructor = {
