@@ -8,21 +8,28 @@ import { resolveClientDir } from './shared.js';
 import type { Options, RequestHandler } from './types.js';
 
 /**
- * Read a prerendered error page from disk and return it as a Response.
- * Returns undefined if the file doesn't exist or can't be read.
+ * Read a prerendered page from disk and return it as a Response.
+ * Tries both the directory-format path (e.g. `/about/index.html`) and the
+ * file-format path (e.g. `/about.html`). Returns `null` if neither is found.
  */
-async function readErrorPageFromDisk(
+async function readStaticPageFromDisk(
 	client: string,
-	status: number,
-): Promise<Response | undefined> {
-	// Try both /404.html and /404/index.html patterns
-	const filePaths = [`${status}.html`, `${status}/index.html`];
+	pathname: string,
+): Promise<Response | null> {
+	// Normalize: strip leading slash, then strip trailing slash for .html variant
+	const normalized = pathname.startsWith('/') ? pathname.slice(1) : pathname;
+	const withoutTrailing = normalized.endsWith('/') ? normalized.slice(0, -1) : normalized;
+
+	const filePaths = [
+		// Directory format:  /about  →  dist/client/about/index.html
+		path.join(client, normalized, 'index.html'),
+		// File format:       /about  →  dist/client/about.html
+		path.join(client, withoutTrailing + '.html'),
+	];
 
 	for (const filePath of filePaths) {
-		const fullPath = path.join(client, filePath);
 		try {
-			const stream = createReadStream(fullPath);
-			// Wait for the stream to open successfully or error
+			const stream = createReadStream(filePath);
 			await new Promise<void>((resolve, reject) => {
 				stream.once('open', () => resolve());
 				stream.once('error', reject);
@@ -32,11 +39,29 @@ async function readErrorPageFromDisk(
 				headers: { 'Content-Type': 'text/html; charset=utf-8' },
 			});
 		} catch {
-			// File doesn't exist or can't be read, try next pattern
+			// File not found, try next pattern
 		}
 	}
 
-	return undefined;
+	return null;
+}
+
+/**
+ * Creates a `prerenderedPageFetch` callback for the given client directory.
+ * This is passed to `app.render()` so that the Astro middleware chain runs
+ * for prerendered page requests, with `next()` returning the pre-built HTML.
+ */
+function createPrerenderedPageFetch(
+	client: string,
+	app: BaseApp,
+): (request: Request) => Promise<Response> {
+	return async (request: Request) => {
+		const url = new URL(request.url);
+		const pathname = app.removeBase(url.pathname) || '/';
+		const response = await readStaticPageFromDisk(client, pathname);
+		// Return a null-body 404 so BaseApp.render() falls through to error-page handling.
+		return response ?? new Response(null, { status: 404 });
+	};
 }
 
 /**
@@ -63,11 +88,11 @@ export function createAppHandler(app: BaseApp, options: Options): RequestHandler
 	// This avoids SSRF risks and is more efficient.
 	const prerenderedErrorPageFetch = async (url: string): Promise<Response> => {
 		if (url.includes('/404')) {
-			const response = await readErrorPageFromDisk(client, 404);
+			const response = await readStaticPageFromDisk(client, '/404');
 			if (response) return response;
 		}
 		if (url.includes('/500')) {
-			const response = await readErrorPageFromDisk(client, 500);
+			const response = await readStaticPageFromDisk(client, '/500');
 			if (response) return response;
 		}
 		// Fallback: if experimentalErrorPageHost is configured, fetch from there
@@ -96,17 +121,24 @@ export function createAppHandler(app: BaseApp, options: Options): RequestHandler
 			return;
 		}
 
-		// Redirects are considered prerendered routes in static mode, but we want to
-		// handle them dynamically, so prerendered routes are included here.
+		// Match all routes, including prerendered ones. Redirects that are prerendered
+		// have always been handled here; we now also handle prerendered pages so that
+		// Astro middleware runs for them before the static file is served.
 		const routeData = app.match(request, true);
-		// But we still want to skip prerendered pages.
-		if (routeData && !(routeData.type === 'page' && routeData.prerender)) {
+		if (routeData) {
+			// For prerendered page routes, provide a fetch function that reads the pre-built
+			// HTML from disk. This is what middleware receives when it calls next().
+			const prerenderedPageFetch =
+				routeData.type === 'page' && routeData.prerender
+					? createPrerenderedPageFetch(client, app)
+					: undefined;
 			const response = await als.run(request.url, () =>
 				app.render(request, {
 					addCookieHeader: true,
 					locals,
 					routeData,
 					prerenderedErrorPageFetch,
+					prerenderedPageFetch,
 				}),
 			);
 			await writeResponse(response, res);

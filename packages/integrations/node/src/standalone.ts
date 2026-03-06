@@ -53,6 +53,23 @@ export function createStandaloneHandler(
 			res.end('Bad request.');
 			return;
 		}
+
+		// For prerendered page routes, route through the app handler so that Astro
+		// middleware executes before the static file is returned. Static assets and
+		// all other unmatched requests still go through the static handler first.
+		if (req.url) {
+			try {
+				const url = new URL(req.url, 'http://localhost');
+				const routeData = app.match(new Request(url.toString()), true);
+				if (routeData?.prerender && routeData.type === 'page') {
+					appHandler(req, res);
+					return;
+				}
+			} catch {
+				// Fall through to the default handling if URL parsing fails
+			}
+		}
+
 		staticHandler(req, res, () => appHandler(req, res));
 	};
 }

@@ -58,6 +58,7 @@ export type CreateRenderContext = Pick<
 			| 'actions'
 			| 'shouldInjectCspMetaTags'
 			| 'skipMiddleware'
+			| 'prerenderedPageFetch'
 		>
 	>;
 
@@ -82,6 +83,15 @@ export class RenderContext {
 		public shouldInjectCspMetaTags = pipeline.manifest.shouldInjectCspMetaTags,
 		public session: AstroSession | undefined = undefined,
 		public skipMiddleware = false,
+		/**
+		 * When set, this function is called by `lastNext` instead of re-rendering the component.
+		 * This allows adapters to run the middleware chain for prerendered (static) pages at request
+		 * time while still serving the pre-built HTML file. The response returned here is what
+		 * middleware receives when it calls `next()`.
+		 */
+		public prerenderedPageFetch:
+			| ((request: Request) => Promise<Response>)
+			| undefined = undefined,
 	) {}
 
 	static #createNormalizedUrl(requestUrl: string): URL {
@@ -125,6 +135,7 @@ export class RenderContext {
 		partial = undefined,
 		shouldInjectCspMetaTags,
 		skipMiddleware = false,
+		prerenderedPageFetch,
 	}: CreateRenderContext): Promise<RenderContext> {
 		const pipelineMiddleware = await pipeline.getMiddleware();
 		const pipelineActions = await pipeline.getActions();
@@ -167,6 +178,7 @@ export class RenderContext {
 			shouldInjectCspMetaTags ?? pipeline.manifest.shouldInjectCspMetaTags,
 			session,
 			skipMiddleware,
+			prerenderedPageFetch,
 		);
 	}
 	/**
@@ -186,19 +198,23 @@ export class RenderContext {
 	): Promise<Response> {
 		const { middleware, pipeline } = this;
 		const { logger, streaming, manifest } = pipeline;
+		// When prerenderedPageFetch is set, we're serving a pre-built static file through
+		// the middleware chain — no component rendering is needed, so skip getProps entirely.
 		const props =
-			Object.keys(this.props).length > 0
-				? this.props
-				: await getProps({
-						mod: componentInstance,
-						routeData: this.routeData,
-						routeCache: this.pipeline.routeCache,
-						pathname: this.pathname,
-						logger,
-						serverLike: manifest.serverLike,
-						base: manifest.base,
-						trailingSlash: manifest.trailingSlash,
-					});
+			this.prerenderedPageFetch && this.routeData.prerender
+				? {}
+				: Object.keys(this.props).length > 0
+					? this.props
+					: await getProps({
+							mod: componentInstance,
+							routeData: this.routeData,
+							routeCache: this.pipeline.routeCache,
+							pathname: this.pathname,
+							logger,
+							serverLike: manifest.serverLike,
+							base: manifest.base,
+							trailingSlash: manifest.trailingSlash,
+						});
 		const actionApiContext = this.createActionAPIContext();
 		const apiContext = this.createAPIContext(props, actionApiContext);
 
@@ -288,6 +304,13 @@ export class RenderContext {
 				case 'redirect':
 					return renderRedirect(this);
 				case 'page': {
+					if (this.routeData.prerender && this.prerenderedPageFetch) {
+						// Serve the pre-built static file through the middleware chain.
+						// Middleware receives this response when it calls next().
+						response = await this.prerenderedPageFetch(ctx.request);
+						response.headers.set(ROUTE_TYPE_HEADER, 'page');
+						break;
+					}
 					this.result = await this.createResult(componentInstance!, actionApiContext);
 					try {
 						response = await renderPage(
