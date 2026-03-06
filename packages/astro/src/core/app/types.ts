@@ -92,7 +92,9 @@ export type SSRManifest = {
 	serverLike: boolean;
 	/**
 	 * The middleware mode determines when and how middleware executes.
-	 * - 'classic' (default): Build-time for prerendered pages, request-time for SSR pages
+	 * - 'classic' (default): Build-time for prerendered pages, request-time for SSR pages. Does not run at request time for prerendered pages.
+	 * - 'always': Build-time AND request-time for prerendered pages, request-time for SSR pages.
+	 * - 'on-request': Request-time only for all pages (build-time middleware skipped for prerendered pages).
 	 * - 'edge': Middleware deployed as separate edge function
 	 */
 	middlewareMode: MiddlewareMode;

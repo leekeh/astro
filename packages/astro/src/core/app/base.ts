@@ -463,6 +463,13 @@ export abstract class BaseApp<P extends Pipeline = AppPipeline> {
 				routeData.prerender && renderOptions?.prerenderedPageFetch
 					? undefined
 					: await this.pipeline.getComponentByRoute(routeData);
+			// In 'on-request' mode, middleware does not run at build time for prerendered
+			// pages — only at request time. Skip middleware here by passing skipMiddleware: true.
+			// At request time, prerenderedPageFetch is provided, so this check is false then.
+			const skipMiddlewareForPrerender =
+				routeData.prerender &&
+				this.manifest.middlewareMode === 'on-request' &&
+				!renderOptions?.prerenderedPageFetch;
 			const renderContext = await this.createRenderContext({
 				pipeline: this.pipeline,
 				locals,
@@ -472,6 +479,7 @@ export abstract class BaseApp<P extends Pipeline = AppPipeline> {
 				status: defaultStatus,
 				clientAddress,
 				prerenderedPageFetch: renderOptions?.prerenderedPageFetch,
+				skipMiddleware: skipMiddlewareForPrerender,
 			});
 			session = renderContext.session;
 			response = await renderContext.render(componentInstance);

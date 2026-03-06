@@ -122,16 +122,23 @@ export function createAppHandler(app: BaseApp, options: Options): RequestHandler
 		}
 
 		// Match all routes, including prerendered ones. Redirects that are prerendered
-		// have always been handled here; we now also handle prerendered pages so that
-		// Astro middleware runs for them before the static file is served.
+		// have always been handled here; we also handle prerendered pages when the
+		// middleware mode opts in to request-time middleware for them.
 		const routeData = app.match(request, true);
-		if (routeData) {
-			// For prerendered page routes, provide a fetch function that reads the pre-built
-			// HTML from disk. This is what middleware receives when it calls next().
-			const prerenderedPageFetch =
-				routeData.type === 'page' && routeData.prerender
-					? createPrerenderedPageFetch(client, app)
-					: undefined;
+		const middlewareMode = app.manifest.middlewareMode;
+		const runMiddlewareForPrerendered =
+			middlewareMode === 'always' || middlewareMode === 'on-request';
+
+		// Route through the app handler when:
+		// - There's a route match AND
+		// - It's not a prerendered page, OR the middleware mode opts in to request-time middleware
+		const isPrerenderedPage = routeData?.type === 'page' && routeData.prerender;
+		if (routeData && (!isPrerenderedPage || runMiddlewareForPrerendered)) {
+			// For prerendered page routes when middleware mode opts in, provide a fetch function
+			// that reads the pre-built HTML from disk. This is what middleware receives from next().
+			const prerenderedPageFetch = isPrerenderedPage
+				? createPrerenderedPageFetch(client, app)
+				: undefined;
 			const response = await als.run(request.url, () =>
 				app.render(request, {
 					addCookieHeader: true,
