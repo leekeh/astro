@@ -1,4 +1,5 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
+import type { MiddlewareMode } from 'astro';
 
 export interface UserOptions {
 	/**
@@ -29,6 +30,20 @@ export interface UserOptions {
 	 * static files are hosted on a different domain. Do not include a path in the URL: it will be ignored.
 	 */
 	experimentalErrorPageHost?: string | URL;
+
+	/**
+	 * Determines when and how Astro middleware executes for prerendered (static) pages.
+	 *
+	 * - `'classic'` (default): Middleware runs for prerendered pages at build time only.
+	 *   It does **not** run at request time for prerendered pages.
+	 * - `'always'`: Middleware runs at build time for prerendered pages **and** again at
+	 *   request time. Use this for auth, personalization, A/B testing on all pages.
+	 * - `'on-request'`: Middleware does **not** run at build time for prerendered pages.
+	 *   It only runs at request time (for both SSR and prerendered pages).
+	 *
+	 * @default 'classic'
+	 */
+	middlewareMode?: MiddlewareMode;
 }
 
 export interface Options extends UserOptions {

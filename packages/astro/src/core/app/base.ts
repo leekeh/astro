@@ -82,6 +82,17 @@ export interface RenderOptions {
 	 * Default: `app.match(request)`
 	 */
 	routeData?: RouteData;
+
+	/**
+	 * A function that fetches the pre-built static HTML for a prerendered (static) page.
+	 * When provided together with a prerendered `routeData`, Astro will run the full middleware
+	 * chain for the request. The response returned by this function is what middleware receives
+	 * when it calls `next()`, allowing middleware to inspect or modify headers, set cookies,
+	 * perform redirects, etc. for prerendered pages at request time.
+	 *
+	 * If not provided, prerendered page routes are NOT passed through the middleware chain.
+	 */
+	prerenderedPageFetch?: (request: Request) => Promise<Response>;
 }
 
 export interface RenderErrorOptions {
@@ -446,8 +457,19 @@ export abstract class BaseApp<P extends Pipeline = AppPipeline> {
 		let response;
 		let session: AstroSession | undefined;
 		try {
-			// Load route module. We also catch its error here if it fails on initialization
-			const componentInstance = await this.pipeline.getComponentByRoute(routeData);
+			// When prerenderedPageFetch is provided for a prerendered route, skip loading the
+			// component module — the static file will be served via the middleware chain instead.
+			const componentInstance =
+				routeData.prerender && renderOptions?.prerenderedPageFetch
+					? undefined
+					: await this.pipeline.getComponentByRoute(routeData);
+			// In 'on-request' mode, middleware does not run at build time for prerendered
+			// pages — only at request time. Skip middleware here by passing skipMiddleware: true.
+			// At request time, prerenderedPageFetch is provided, so this check is false then.
+			const skipMiddlewareForPrerender =
+				routeData.prerender &&
+				this.manifest.middlewareMode === 'on-request' &&
+				!renderOptions?.prerenderedPageFetch;
 			const renderContext = await this.createRenderContext({
 				pipeline: this.pipeline,
 				locals,
@@ -456,6 +478,8 @@ export abstract class BaseApp<P extends Pipeline = AppPipeline> {
 				routeData,
 				status: defaultStatus,
 				clientAddress,
+				prerenderedPageFetch: renderOptions?.prerenderedPageFetch,
+				skipMiddleware: skipMiddlewareForPrerender,
 			});
 			session = renderContext.session;
 			response = await renderContext.render(componentInstance);

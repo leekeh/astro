@@ -53,6 +53,29 @@ export function createStandaloneHandler(
 			res.end('Bad request.');
 			return;
 		}
+
+		// For prerendered page routes when the middleware mode opts in to running
+		// middleware at request time ('always' or 'on-request'), route through
+		// appHandler so Astro middleware executes before the static file is returned.
+		// In 'classic' mode, prerendered pages go through the static handler as before.
+		if (req.url) {
+			try {
+				const middlewareMode = app.manifest.middlewareMode;
+				const runMiddlewareForPrerendered =
+					middlewareMode === 'always' || middlewareMode === 'on-request';
+				if (runMiddlewareForPrerendered) {
+					const url = new URL(req.url, 'http://localhost');
+					const routeData = app.match(new Request(url.toString()), true);
+					if (routeData?.prerender && routeData.type === 'page') {
+						appHandler(req, res);
+						return;
+					}
+				}
+			} catch {
+				// Fall through to the default handling if URL parsing fails
+			}
+		}
+
 		staticHandler(req, res, () => appHandler(req, res));
 	};
 }
